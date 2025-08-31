@@ -1,4 +1,4 @@
-import { addComponent, removeComponent } from './Component'
+import { addComponent, removeComponent, addComponents } from './Component'
 import {
 	query,
 	noCommit,
@@ -37,7 +37,9 @@ export const addPrefab = (world: World): EntityId => {
  * @param {World} world
  * @returns {number} eid
  */
-export const addEntity = (world: World): EntityId => {
+export function addEntity(world: World): EntityId
+export function addEntity(world: World, ...components: any[]): EntityId
+export function addEntity(world: World, ...components: any[]): EntityId {
 	const ctx = (world as InternalWorld)[$internal]
 	const eid = addEntityId(ctx.entityIndex)
 
@@ -47,6 +49,10 @@ export const addEntity = (world: World): EntityId => {
 	})
 
 	ctx.entityComponents.set(eid, new Set())
+
+	if (components.length > 0) {
+		addComponents(world, eid, components as any)
+	}
 
 	return eid
 }
