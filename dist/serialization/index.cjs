@@ -24,6 +24,7 @@ __export(serialization_exports, {
   $i16: () => $i16,
   $i32: () => $i32,
   $i8: () => $i8,
+  $ref: () => $ref,
   $str: () => $str,
   $u16: () => $u16,
   $u32: () => $u32,
@@ -42,6 +43,7 @@ __export(serialization_exports, {
   i16: () => i16,
   i32: () => i32,
   i8: () => i8,
+  ref: () => ref,
   str: () => str,
   u16: () => u16,
   u32: () => u32,
@@ -58,18 +60,20 @@ var $u32 = Symbol.for("bitecs-u32");
 var $i32 = Symbol.for("bitecs-i32");
 var $f32 = Symbol.for("bitecs-f32");
 var $f64 = Symbol.for("bitecs-f64");
+var $ref = Symbol.for("bitecs-ref");
 var $str = Symbol.for("bitecs-str");
 var $arr = Symbol.for("bitecs-arr");
 var typeTagForSerialization = (symbol) => (a = []) => Object.defineProperty(a, symbol, { value: true, enumerable: false, writable: false, configurable: false });
-var u8 = typeTagForSerialization($u8);
-var i8 = typeTagForSerialization($i8);
-var u16 = typeTagForSerialization($u16);
-var i16 = typeTagForSerialization($i16);
-var u32 = typeTagForSerialization($u32);
-var i32 = typeTagForSerialization($i32);
-var f32 = typeTagForSerialization($f32);
-var f64 = typeTagForSerialization($f64);
-var str = typeTagForSerialization($str);
+var u8 = (a = []) => typeTagForSerialization($u8)(a);
+var i8 = (a = []) => typeTagForSerialization($i8)(a);
+var u16 = (a = []) => typeTagForSerialization($u16)(a);
+var i16 = (a = []) => typeTagForSerialization($i16)(a);
+var u32 = (a = []) => typeTagForSerialization($u32)(a);
+var i32 = (a = []) => typeTagForSerialization($i32)(a);
+var f32 = (a = []) => typeTagForSerialization($f32)(a);
+var f64 = (a = []) => typeTagForSerialization($f64)(a);
+var ref = (a = []) => typeTagForSerialization($ref)(a);
+var str = (a = []) => typeTagForSerialization($str)(a);
 var functionToSymbolMap = /* @__PURE__ */ new Map([
   [u8, $u8],
   [i8, $i8],
@@ -79,6 +83,7 @@ var functionToSymbolMap = /* @__PURE__ */ new Map([
   [i32, $i32],
   [f32, $f32],
   [f64, $f64],
+  [ref, $ref],
   [str, $str]
 ]);
 var typeSetters = {
@@ -114,6 +119,10 @@ var typeSetters = {
     view.setFloat64(offset, value);
     return 8;
   },
+  [$ref]: (view, offset, value) => {
+    view.setUint32(offset, value);
+    return 4;
+  },
   [$str]: (view, offset, value) => {
     const enc = textEncoder;
     const bytes = enc.encode(value);
@@ -133,6 +142,7 @@ var typeGetters = {
   [$i32]: (view, offset) => ({ value: view.getInt32(offset), size: 4 }),
   [$f32]: (view, offset) => ({ value: view.getFloat32(offset), size: 4 }),
   [$f64]: (view, offset) => ({ value: view.getFloat64(offset), size: 8 }),
+  [$ref]: (view, offset) => ({ value: view.getUint32(offset), size: 4 }),
   [$str]: (view, offset) => {
     const { value: len, size: lenSize } = typeGetters[$u32](view, offset);
     const bytes = new Uint8Array(view.buffer, view.byteOffset + offset + lenSize, len);
@@ -157,11 +167,11 @@ function resolveTypeToSymbol(type) {
 }
 var textEncoder = new TextEncoder();
 var textDecoder = new TextDecoder();
-var array = (type = f32) => {
+function array(type = f64) {
   const arr = [];
   Object.defineProperty(arr, $arr, { value: type, enumerable: false, writable: false, configurable: false });
   return arr;
-};
+}
 function isTypedArrayOrBranded(arr) {
   return arr && (ArrayBuffer.isView(arr) || Array.isArray(arr) && typeof arr === "object");
 }
@@ -169,7 +179,7 @@ function getTypeForArray(arr) {
   if (isArrayType(arr)) {
     return resolveTypeToSymbol(arr[$arr]);
   }
-  for (const symbol of [$u8, $i8, $u16, $i16, $u32, $i32, $f32, $f64, $str]) {
+  for (const symbol of [$u8, $i8, $u16, $i16, $u32, $i32, $f32, $f64, $str, $ref]) {
     if (symbol in arr) return symbol;
   }
   if (arr instanceof Int8Array) return $i8;
@@ -206,7 +216,7 @@ function serializeArrayValue(elementType, value, view, offset) {
   }
   return bytesWritten;
 }
-function deserializeArrayValue(elementType, view, offset) {
+function deserializeArrayValue(elementType, view, offset, entityIdMapping) {
   let bytesRead = 0;
   const isArrayResult = typeGetters[$u8](view, offset + bytesRead);
   bytesRead += isArrayResult.size;
@@ -218,7 +228,7 @@ function deserializeArrayValue(elementType, view, offset) {
   const arr = new Array(arrayLengthResult.value);
   for (let i = 0; i < arr.length; i++) {
     if (isArrayType(elementType)) {
-      const { value, size } = deserializeArrayValue(getArrayElementType(elementType), view, offset + bytesRead);
+      const { value, size } = deserializeArrayValue(getArrayElementType(elementType), view, offset + bytesRead, entityIdMapping);
       bytesRead += size;
       if (Array.isArray(value)) {
         arr[i] = value;
@@ -227,7 +237,12 @@ function deserializeArrayValue(elementType, view, offset) {
       const symbol = resolveTypeToSymbol(elementType);
       const { value, size } = typeGetters[symbol](view, offset + bytesRead);
       bytesRead += size;
-      arr[i] = value;
+      if (symbol === $ref) {
+        const mapped = entityIdMapping ? entityIdMapping.get(value) ?? value : value;
+        arr[i] = mapped;
+      } else {
+        arr[i] = value;
+      }
     }
   }
   return { value: arr, size: bytesRead };
@@ -343,7 +358,13 @@ var createComponentDeserializer = (component, diff = false) => {
         bytesRead += cidSize;
       }
       const { value, size } = getter(view, offset + bytesRead);
-      component[index] = value;
+      if (type === $ref) {
+        const mapped = entityIdMapping ? entityIdMapping.get(value) ?? value : value;
+        component[index] = mapped;
+      } else {
+        ;
+        component[index] = value;
+      }
       return bytesRead + size;
     };
   }
@@ -373,14 +394,19 @@ var createComponentDeserializer = (component, diff = false) => {
         if (changeMask & 1 << i) {
           const componentProperty = component[props[i]];
           if (isArrayType(componentProperty)) {
-            const { value, size } = deserializeArrayValue(getArrayElementType(componentProperty), view, offset + bytesRead);
+            const { value, size } = deserializeArrayValue(getArrayElementType(componentProperty), view, offset + bytesRead, entityIdMapping);
             if (Array.isArray(value)) {
               componentProperty[index] = value;
             }
             bytesRead += size;
           } else {
             const { value, size } = getters[i](view, offset + bytesRead);
-            component[props[i]][index] = value;
+            if (types[i] === $ref) {
+              const mapped = entityIdMapping ? entityIdMapping.get(value) ?? value : value;
+              component[props[i]][index] = mapped;
+            } else {
+              component[props[i]][index] = value;
+            }
             bytesRead += size;
           }
         }
@@ -389,14 +415,19 @@ var createComponentDeserializer = (component, diff = false) => {
       for (let i = 0; i < props.length; i++) {
         const componentProperty = component[props[i]];
         if (isArrayType(componentProperty)) {
-          const { value, size } = deserializeArrayValue(getArrayElementType(componentProperty), view, offset + bytesRead);
+          const { value, size } = deserializeArrayValue(getArrayElementType(componentProperty), view, offset + bytesRead, entityIdMapping);
           if (Array.isArray(value)) {
             componentProperty[index] = value;
           }
           bytesRead += size;
         } else {
           const { value, size } = getters[i](view, offset + bytesRead);
-          component[props[i]][index] = value;
+          if (types[i] === $ref) {
+            const mapped = entityIdMapping ? entityIdMapping.get(value) ?? value : value;
+            component[props[i]][index] = mapped;
+          } else {
+            component[props[i]][index] = value;
+          }
           bytesRead += size;
         }
       }
@@ -537,20 +568,25 @@ var createAoSComponentDeserializer = (component) => {
     const props = Object.keys(component).filter((key) => isNaN(parseInt(key)));
     const types = props.map((prop) => getTypeForArray(component[prop]));
     const getters = types.map((type) => typeGetters[type]);
-    return (view, offset, entityId) => {
+    return (view, offset, entityId, entityIdMapping) => {
       let bytesRead = 0;
       const value = {};
       for (let i = 0; i < props.length; i++) {
         const prop = component[props[i]];
         if (isArrayType(prop)) {
-          const { value: propValue, size } = deserializeArrayValue(getArrayElementType(prop), view, offset + bytesRead);
+          const { value: propValue, size } = deserializeArrayValue(getArrayElementType(prop), view, offset + bytesRead, entityIdMapping);
           if (Array.isArray(propValue)) {
             value[props[i]] = propValue;
           }
           bytesRead += size;
         } else {
           const { value: propValue, size } = getters[i](view, offset + bytesRead);
-          value[props[i]] = propValue;
+          if (types[i] === $ref) {
+            const mapped = entityIdMapping ? entityIdMapping.get(propValue) ?? propValue : propValue;
+            value[props[i]] = mapped;
+          } else {
+            value[props[i]] = propValue;
+          }
           bytesRead += size;
         }
       }
@@ -560,9 +596,15 @@ var createAoSComponentDeserializer = (component) => {
   } else {
     const type = getTypeForArray(component);
     const getter = typeGetters[type];
-    return (view, offset, entityId) => {
+    return (view, offset, entityId, entityIdMapping) => {
       const { value, size } = getter(view, offset);
-      component[entityId] = value;
+      if (type === $ref) {
+        const mapped = entityIdMapping ? entityIdMapping.get(value) ?? value : value;
+        component[entityId] = mapped;
+      } else {
+        ;
+        component[entityId] = value;
+      }
       return size;
     };
   }
@@ -630,12 +672,12 @@ var createAoSDeserializer = (components, options = {}) => {
         offset += maskSize;
         for (let i = 0; i < components.length; i++) {
           if (componentMask & 1 << i) {
-            offset += componentDeserializers[i](view, offset, entityId);
+            offset += componentDeserializers[i](view, offset, entityId, entityIdMapping);
           }
         }
       } else {
         for (let i = 0; i < componentDeserializers.length; i++) {
-          offset += componentDeserializers[i](view, offset, entityId);
+          offset += componentDeserializers[i](view, offset, entityId, entityIdMapping);
         }
       }
     }
@@ -649,8 +691,13 @@ function serializeRelationData(data, eid, dataView, offset) {
   if (Array.isArray(data)) {
     const value = data[eid];
     if (value !== void 0) {
-      dataView.setFloat64(offset, value);
-      return offset + 8;
+      if ($ref in data) {
+        dataView.setUint32(offset, value);
+        return offset + 4;
+      } else {
+        dataView.setFloat64(offset, value);
+        return offset + 8;
+      }
     }
     return offset;
   }
@@ -675,7 +722,7 @@ function serializeRelationData(data, eid, dataView, offset) {
         } else if (arr instanceof Int32Array || $i32 in arr) {
           dataView.setInt32(offset, value);
           offset += 4;
-        } else if (arr instanceof Uint32Array || $u32 in arr) {
+        } else if (arr instanceof Uint32Array || $u32 in arr || $ref in arr) {
           dataView.setUint32(offset, value);
           offset += 4;
         } else if (arr instanceof Float32Array || $f32 in arr) {
@@ -690,9 +737,15 @@ function serializeRelationData(data, eid, dataView, offset) {
   }
   return offset;
 }
-function deserializeRelationData(data, eid, dataView, offset) {
+function deserializeRelationData(data, eid, dataView, offset, entityIdMapping) {
   if (!data) return offset;
   if (Array.isArray(data)) {
+    if ($ref in data) {
+      const value = dataView.getUint32(offset);
+      const mapped = entityIdMapping ? entityIdMapping.get(value) ?? value : value;
+      data[eid] = mapped;
+      return offset + 4;
+    }
     data[eid] = dataView.getFloat64(offset);
     return offset + 8;
   }
@@ -715,8 +768,14 @@ function deserializeRelationData(data, eid, dataView, offset) {
       } else if (arr instanceof Int32Array || $i32 in arr) {
         arr[eid] = dataView.getInt32(offset);
         offset += 4;
-      } else if (arr instanceof Uint32Array || $u32 in arr) {
-        arr[eid] = dataView.getUint32(offset);
+      } else if (arr instanceof Uint32Array || $u32 in arr || $ref in arr) {
+        const value = dataView.getUint32(offset);
+        if ($ref in arr) {
+          const mapped = entityIdMapping ? entityIdMapping.get(value) ?? value : value;
+          arr[eid] = mapped;
+        } else {
+          arr[eid] = value;
+        }
         offset += 4;
       } else if (arr instanceof Float32Array || $f32 in arr) {
         arr[eid] = dataView.getFloat32(offset);
@@ -771,19 +830,19 @@ var createSnapshotSerializer = (world, components, buffer = new ArrayBuffer(1024
     new Uint8Array(buffer).set(new Uint8Array(componentData), offset);
     offset += componentData.byteLength;
   };
-  return () => {
+  return (selectedEntities) => {
     offset = 0;
-    const entities = (0, import_bitecs.getAllEntities)(world);
+    const entities = selectedEntities ?? (0, import_bitecs.getAllEntities)(world);
     serializeEntityComponentRelationships(entities);
     serializeComponentData(entities);
     return buffer.slice(0, offset);
   };
 };
-var createSnapshotDeserializer = (world, components, constructorMapping) => {
-  let entityIdMapping = constructorMapping || /* @__PURE__ */ new Map();
+var createSnapshotDeserializer = (world, components, idMap) => {
+  let entityIdMapping = idMap || /* @__PURE__ */ new Map();
   const soaDeserializer = createSoADeserializer(components);
-  return (packet, overrideMapping) => {
-    const currentMapping = overrideMapping || entityIdMapping;
+  return (packet, idMapOverride) => {
+    const currentMapping = idMapOverride || entityIdMapping;
     const dataView = new DataView(packet);
     let offset = 0;
     const entityCount = dataView.getUint32(offset);
@@ -812,7 +871,7 @@ var createSnapshotDeserializer = (world, components, constructorMapping) => {
           }
           const relationComponent = component(worldTargetId);
           (0, import_bitecs.addComponent)(world, worldEntityId, relationComponent);
-          offset = deserializeRelationData(relationComponent, worldEntityId, dataView, offset);
+          offset = deserializeRelationData(relationComponent, worldEntityId, dataView, offset, currentMapping);
         } else {
           (0, import_bitecs.addComponent)(world, worldEntityId, component);
         }
@@ -830,8 +889,13 @@ function serializeRelationData2(data, eid, dataView, offset) {
   if (Array.isArray(data)) {
     const value = data[eid];
     if (value !== void 0) {
-      dataView.setFloat64(offset, value);
-      return offset + 8;
+      if ($ref in data) {
+        dataView.setUint32(offset, value);
+        return offset + 4;
+      } else {
+        dataView.setFloat64(offset, value);
+        return offset + 8;
+      }
     }
     return offset;
   }
@@ -856,7 +920,7 @@ function serializeRelationData2(data, eid, dataView, offset) {
         } else if (arr instanceof Int32Array || $i32 in arr) {
           dataView.setInt32(offset, value);
           offset += 4;
-        } else if (arr instanceof Uint32Array || $u32 in arr) {
+        } else if (arr instanceof Uint32Array || $u32 in arr || $ref in arr) {
           dataView.setUint32(offset, value);
           offset += 4;
         } else if (arr instanceof Float32Array || $f32 in arr) {
@@ -871,9 +935,15 @@ function serializeRelationData2(data, eid, dataView, offset) {
   }
   return offset;
 }
-function deserializeRelationData2(data, eid, dataView, offset) {
+function deserializeRelationData2(data, eid, dataView, offset, entityIdMapping) {
   if (!data) return offset;
   if (Array.isArray(data)) {
+    if ($ref in data) {
+      const value = dataView.getUint32(offset);
+      const mapped = entityIdMapping ? entityIdMapping.get(value) ?? value : value;
+      data[eid] = mapped;
+      return offset + 4;
+    }
     data[eid] = dataView.getFloat64(offset);
     return offset + 8;
   }
@@ -896,8 +966,14 @@ function deserializeRelationData2(data, eid, dataView, offset) {
       } else if (arr instanceof Int32Array || $i32 in arr) {
         arr[eid] = dataView.getInt32(offset);
         offset += 4;
-      } else if (arr instanceof Uint32Array || $u32 in arr) {
-        arr[eid] = dataView.getUint32(offset);
+      } else if (arr instanceof Uint32Array || $u32 in arr || $ref in arr) {
+        const value = dataView.getUint32(offset);
+        if ($ref in arr) {
+          const mapped = entityIdMapping ? entityIdMapping.get(value) ?? value : value;
+          arr[eid] = mapped;
+        } else {
+          arr[eid] = value;
+        }
         offset += 4;
       } else if (arr instanceof Float32Array || $f32 in arr) {
         arr[eid] = dataView.getFloat32(offset);
@@ -910,8 +986,9 @@ function deserializeRelationData2(data, eid, dataView, offset) {
   }
   return offset;
 }
-var createObserverSerializer = (world, networkedTag, components, buffer = new ArrayBuffer(1024 * 1024 * 100)) => {
-  const dataView = new DataView(buffer);
+var createObserverSerializer = (world, networkedTag, components, options = {}) => {
+  const backingBuffer = options.buffer ?? new ArrayBuffer(1024 * 1024 * 100);
+  const dataView = new DataView(backingBuffer);
   let offset = 0;
   const queue = [];
   const relationTargets = /* @__PURE__ */ new Map();
@@ -978,13 +1055,13 @@ var createObserverSerializer = (world, networkedTag, components, buffer = new Ar
       }
     }
     queue.length = 0;
-    return buffer.slice(0, offset);
+    return backingBuffer.slice(0, offset);
   };
 };
-var createObserverDeserializer = (world, networkedTag, components, constructorMapping) => {
-  let entityIdMapping = constructorMapping || /* @__PURE__ */ new Map();
-  return (packet, overrideMapping) => {
-    const currentMapping = overrideMapping || entityIdMapping;
+var createObserverDeserializer = (world, networkedTag, components, options = {}) => {
+  let entityIdMapping = options.idMap || /* @__PURE__ */ new Map();
+  return (packet, idMap) => {
+    const currentMapping = idMap || entityIdMapping;
     const dataView = new DataView(packet);
     let offset = 0;
     while (offset < packet.byteLength) {
@@ -1025,7 +1102,7 @@ var createObserverDeserializer = (world, networkedTag, components, constructorMa
           if (worldTargetId !== void 0) {
             const relationComponent = component(worldTargetId);
             (0, import_bitecs2.addComponent)(world, worldEntityId, relationComponent);
-            offset = deserializeRelationData2(relationComponent, worldEntityId, dataView, offset);
+            offset = deserializeRelationData2(relationComponent, worldEntityId, dataView, offset, currentMapping);
           }
         } else if (operationType === 5 /* RemoveRelation */) {
           const worldTargetId = currentMapping.get(targetId);

@@ -127,7 +127,7 @@ var resetWorld = (world) => {
 var deleteWorld = (world) => {
   delete world[$internal];
 };
-var getWorldComponents = (world) => Object.keys(world[$internal].componentMap);
+var getWorldComponents = (world) => Array.from(world[$internal].componentMap.keys());
 var getAllEntities = (world) => Array.from(world[$internal].entityComponents.keys());
 
 // src/core/utils/SparseSet.ts
@@ -765,9 +765,14 @@ function queryCheckEntity(world, query2, eid) {
   return hasOrMatch;
 }
 var queryAddEntity = (query2, eid) => {
-  query2.toRemove.remove(eid);
-  query2.addObservable.notify(eid);
+  if (query2.toRemove.has(eid)) {
+    query2.toRemove.remove(eid);
+    query2.addObservable.notify(eid);
+    return;
+  }
+  if (query2.has(eid)) return;
   query2.add(eid);
+  query2.addObservable.notify(eid);
 };
 var queryCommitRemovals = (query2) => {
   for (let i = 0; i < query2.toRemove.dense.length; i++) {
@@ -891,7 +896,6 @@ var addComponent = (world, eid, componentOrSet) => {
   ctx.entityMasks[generationId][eid] |= bitflag;
   if (!hasComponent(world, eid, Prefab)) {
     queries.forEach((queryData) => {
-      queryData.toRemove.remove(eid);
       const match = queryCheckEntity(world, queryData, eid);
       if (match) queryAddEntity(queryData, eid);
       else queryRemoveEntity(world, queryData, eid);
@@ -976,7 +980,7 @@ var addPrefab = (world) => {
   addComponent(world, eid, Prefab);
   return eid;
 };
-var addEntity = (world) => {
+function addEntity(world, ...components) {
   const ctx = world[$internal];
   const eid = addEntityId(ctx.entityIndex);
   ctx.notQueries.forEach((q) => {
@@ -984,8 +988,11 @@ var addEntity = (world) => {
     if (match) queryAddEntity(q, eid);
   });
   ctx.entityComponents.set(eid, /* @__PURE__ */ new Set());
+  if (components.length > 0) {
+    addComponents(world, eid, components);
+  }
   return eid;
-};
+}
 var removeEntity = (world, eid) => {
   const ctx = world[$internal];
   if (!isEntityIdAlive(ctx.entityIndex, eid)) return;
@@ -1050,6 +1057,13 @@ var entityExists = (world, eid) => isEntityIdAlive(world[$internal].entityIndex,
 var pipe = (...functions) => {
   return (...args) => functions.reduce((result, fn) => [fn(...result)], args)[0];
 };
+
+// src/core/utils/soa.ts
+var soa = (spec) => spec;
+function aos(spec) {
+  const base = [];
+  return spec ? Object.assign(base, spec) : base;
+}
 export {
   $internal,
   All,
@@ -1068,6 +1082,7 @@ export {
   addComponents,
   addEntity,
   addPrefab,
+  aos,
   asBuffer,
   commitRemovals,
   createEntityIndex,
@@ -1088,6 +1103,7 @@ export {
   isNested,
   isRelation,
   isWildcard,
+  makeExclusive,
   noCommit,
   observe,
   onAdd,
@@ -1106,6 +1122,7 @@ export {
   resetWorld,
   set,
   setComponent,
+  soa,
   withAutoRemoveSubject,
   withOnTargetRemoved,
   withStore,

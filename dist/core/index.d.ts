@@ -8,7 +8,8 @@ export type { ComponentRef, ComponentData } from './Component';
 export { commitRemovals, removeQuery, registerQuery, query, observe, onAdd, onRemove, Or, And, Not, Any, All, None, onGet, onSet, Hierarchy, Cascade, asBuffer, isNested, noCommit, } from './Query';
 export type { ObservableHookDef, ObservableHook, QueryResult, Query, QueryOperatorType, OpReturnType, QueryOperator, QueryTerm, QueryOptions, HierarchyTerm, QueryModifier, } from './Query';
 export { pipe } from './utils/pipe';
-export { withAutoRemoveSubject, withOnTargetRemoved, withStore, createRelation, getRelationTargets, Wildcard, IsA, Pair, isRelation, isWildcard, } from './Relation';
+export { soa, aos } from './utils/soa';
+export { withAutoRemoveSubject, withOnTargetRemoved, withStore, makeExclusive, createRelation, getRelationTargets, Wildcard, IsA, Pair, isRelation, isWildcard, } from './Relation';
 export type { OnTargetRemovedCallback, Relation, RelationTarget, } from './Relation';
 export { getHierarchyDepth, getMaxHierarchyDepth, } from './Hierarchy';
 //# sourceMappingURL=index.d.ts.map

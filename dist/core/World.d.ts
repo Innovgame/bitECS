@@ -37,6 +37,6 @@ export type World<T extends object = {}> = {
 export declare function createWorld<T extends object = {}>(...args: Array<EntityIndex | T>): World<T>;
 export declare const resetWorld: (world: World) => World<{}>;
 export declare const deleteWorld: (world: World) => void;
-export declare const getWorldComponents: (world: World) => string[];
+export declare const getWorldComponents: (world: World) => any[];
 export declare const getAllEntities: (world: World) => readonly EntityId[];
 //# sourceMappingURL=World.d.ts.map
