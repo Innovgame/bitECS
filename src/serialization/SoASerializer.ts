@@ -4,6 +4,7 @@
  */
 export const $u8 = Symbol.for('bitecs-u8'), $i8 = Symbol.for('bitecs-i8'), $u16 = Symbol.for('bitecs-u16'), $i16 = Symbol.for('bitecs-i16'),
     $u32 = Symbol.for('bitecs-u32'), $i32 = Symbol.for('bitecs-i32'), $f32 = Symbol.for('bitecs-f32'), $f64 = Symbol.for('bitecs-f64'),
+    $ref = Symbol.for('bitecs-ref'),
     $str = Symbol.for('bitecs-str'),
     $arr = Symbol.for('bitecs-arr')
 
@@ -23,7 +24,7 @@ export type TypedArray =
 /**
  * Union type of all possible type symbols.
  */
-export type TypeSymbol = typeof $u8 | typeof $i8 | typeof $u16 | typeof $i16 | typeof $u32 | typeof $i32 | typeof $f32 | typeof $f64 | typeof $str
+export type TypeSymbol = typeof $u8 | typeof $i8 | typeof $u16 | typeof $i16 | typeof $u32 | typeof $i32 | typeof $f32 | typeof $f64 | typeof $str | typeof $ref
 
 /**
  * Type representing a primitive brand, which is either a number array with a symbol property or a TypedArray.
@@ -35,7 +36,7 @@ export type PrimitiveBrand = ((number[] | string[]) & { [key: symbol]: true }) |
  * a PrimitiveBrand (number array with type symbol), TypedArray, or ArrayType values.
  * Used to define the structure of components that can be serialized.
  */
-export type ComponentRef = Record<string, PrimitiveBrand | TypedArray | ArrayType<any>>
+export type ComponentRef = Record<string, any>
 
 export type ArrayType<T> = T[] & { [$arr]: TypeSymbol | TypeFunction | ArrayType<any> }
 
@@ -44,31 +45,37 @@ export type ArrayType<T> = T[] & { [$arr]: TypeSymbol | TypeFunction | ArrayType
  * @param {TypeSymbol} symbol - The type symbol to tag the array with.
  * @returns {Function} A function that tags an array with the given type symbol.
  */
-const typeTagForSerialization = (symbol: TypeSymbol) => (a: any[] = []): PrimitiveBrand =>
-    Object.defineProperty(a, symbol, { value: true, enumerable: false, writable: false, configurable: false }) as PrimitiveBrand
+const typeTagForSerialization = <T extends any[] = number[]>(symbol: TypeSymbol) => (a: T = [] as T): T & { [key: symbol]: true } =>
+    Object.defineProperty(a, symbol, { value: true, enumerable: false, writable: false, configurable: false }) as T & { [key: symbol]: true }
 
 /**
  * Functions to create arrays tagged with specific type symbols.
  */
-export const u8 = typeTagForSerialization($u8),     i8 = typeTagForSerialization($i8),
-            u16 = typeTagForSerialization($u16),    i16 = typeTagForSerialization($i16),
-            u32 = typeTagForSerialization($u32),    i32 = typeTagForSerialization($i32),
-            f32 = typeTagForSerialization($f32),    f64 = typeTagForSerialization($f64),
-            str = typeTagForSerialization($str)
-
-/**
- * Mapping from type functions to their corresponding symbols.
- */
-const functionToSymbolMap = new Map([
-    [u8, $u8], [i8, $i8], [u16, $u16], [i16, $i16],
-    [u32, $u32], [i32, $i32], [f32, $f32], [f64, $f64],
-    [str, $str]
-])
+export const u8 = (a: number[] = []): number[] => typeTagForSerialization($u8)(a) as number[],
+            i8 = (a: number[] = []): number[] => typeTagForSerialization($i8)(a) as number[],
+            u16 = (a: number[] = []): number[] => typeTagForSerialization($u16)(a) as number[],
+            i16 = (a: number[] = []): number[] => typeTagForSerialization($i16)(a) as number[],
+            u32 = (a: number[] = []): number[] => typeTagForSerialization($u32)(a) as number[],
+            i32 = (a: number[] = []): number[] => typeTagForSerialization($i32)(a) as number[],
+            f32 = (a: number[] = []): number[] => typeTagForSerialization($f32)(a) as number[],
+            f64 = (a: number[] = []): number[] => typeTagForSerialization($f64)(a) as number[],
+            ref = (a: number[] = []): number[] => typeTagForSerialization($ref)(a) as number[],
+            str = (a: string[] = []): string[] => typeTagForSerialization<string[]>($str)(a) as string[]
 
 /**
  * Type representing a type function.
  */
-type TypeFunction = typeof u8 | typeof i8 | typeof u16 | typeof i16 | typeof u32 | typeof i32 | typeof f32 | typeof f64 | typeof str
+type TypeFunction = typeof u8 | typeof i8 | typeof u16 | typeof i16 | typeof u32 | typeof i32 | typeof f32 | typeof f64 | typeof str | typeof ref
+
+/**
+ * Mapping from type functions to their corresponding symbols.
+ */
+const functionToSymbolMap = new Map<TypeFunction, TypeSymbol>([
+    [u8, $u8], [i8, $i8], [u16, $u16], [i16, $i16],
+    [u32, $u32], [i32, $i32], [f32, $f32], [f64, $f64],
+    [ref, $ref],
+    [str, $str]
+])
 
 /**
  * Object containing setter functions for each data type.
@@ -82,6 +89,7 @@ export const typeSetters: Record<TypeSymbol, (view: DataView, offset: number, va
     [$i32]: (view: DataView, offset: number, value: number) => { view.setInt32(offset, value); return 4; },
     [$f32]: (view: DataView, offset: number, value: number) => { view.setFloat32(offset, value); return 4; },
     [$f64]: (view: DataView, offset: number, value: number) => { view.setFloat64(offset, value); return 8; },
+    [$ref]: (view: DataView, offset: number, value: number) => { view.setUint32(offset, value); return 4; },
     [$str]: (view: DataView, offset: number, value: string) => {
         const enc = textEncoder
         const bytes = enc.encode(value)
@@ -105,6 +113,7 @@ export const typeGetters: Record<TypeSymbol, (view: DataView, offset: number) =>
     [$i32]: (view: DataView, offset: number) => ({ value: view.getInt32(offset), size: 4 }),
     [$f32]: (view: DataView, offset: number) => ({ value: view.getFloat32(offset), size: 4 }),
     [$f64]: (view: DataView, offset: number) => ({ value: view.getFloat64(offset), size: 8 }),
+    [$ref]: (view: DataView, offset: number) => ({ value: view.getUint32(offset), size: 4 }),
     [$str]: (view: DataView, offset: number) => {
         const { value: len, size: lenSize } = typeGetters[$u32](view, offset)
         const bytes = new Uint8Array(view.buffer, view.byteOffset + offset + lenSize, len)
@@ -122,7 +131,7 @@ function resolveTypeToSymbol(type: TypeSymbol | TypeFunction | ArrayType<any>): 
         return type
     }
     if (typeof type === 'function') {
-        const symbol = functionToSymbolMap.get(type as TypeFunction) as TypeSymbol | undefined
+        const symbol = functionToSymbolMap.get(type)
         if (symbol) return symbol
         throw new Error(`Unknown type function: ${type}`)
     }
@@ -135,12 +144,13 @@ function resolveTypeToSymbol(type: TypeSymbol | TypeFunction | ArrayType<any>): 
 const textEncoder = new TextEncoder()
 const textDecoder = new TextDecoder()
 
-export const array = <T extends any[] = any[]>(type: TypeSymbol | TypeFunction | ArrayType<any> = f32): ArrayType<T> => {
-    const arr = [] as any[];
-
-    Object.defineProperty(arr, $arr, { value: type, enumerable: false, writable: false, configurable: false })
-
-    return arr as ArrayType<T>;
+export function array(type: typeof $str | typeof str): ArrayType<string[]>
+export function array(type?: TypeSymbol | TypeFunction): ArrayType<number[]>
+export function array<T>(type: ArrayType<T>): ArrayType<T[]>
+export function array(type: TypeSymbol | TypeFunction | ArrayType<any> = f64): ArrayType<any> {
+	const arr = [] as any[]
+	Object.defineProperty(arr, $arr, { value: type, enumerable: false, writable: false, configurable: false })
+	return arr as ArrayType<any>
 }
 
 /**
@@ -162,7 +172,7 @@ export function getTypeForArray(arr: PrimitiveBrand | TypedArray | ArrayType<any
         return resolveTypeToSymbol(arr[$arr])
     }
     // Check for branded arrays
-    for (const symbol of [$u8, $i8, $u16, $i16, $u32, $i32, $f32, $f64, $str] as TypeSymbol[]) {
+    for (const symbol of [$u8, $i8, $u16, $i16, $u32, $i32, $f32, $f64, $str, $ref] as TypeSymbol[]) {
         if (symbol in arr) return symbol
     }
     // Then check TypedArrays
@@ -229,7 +239,8 @@ export function serializeArrayValue(
 export function deserializeArrayValue(
     elementType: ArrayType<any> | TypeSymbol | TypeFunction,
     view: DataView,
-    offset: number
+    offset: number,
+    entityIdMapping?: Map<number, number>
 ) {
     let bytesRead = 0
 
@@ -245,7 +256,7 @@ export function deserializeArrayValue(
     const arr = new Array(arrayLengthResult.value) as any;
     for (let i = 0; i < arr.length; i++) {
         if (isArrayType(elementType)) {
-            const { value, size } = deserializeArrayValue(getArrayElementType(elementType), view, offset + bytesRead)
+            const { value, size } = deserializeArrayValue(getArrayElementType(elementType), view, offset + bytesRead, entityIdMapping)
             bytesRead += size
             if (Array.isArray(value)) {
                 arr[i] = value
@@ -255,7 +266,12 @@ export function deserializeArrayValue(
             const symbol = resolveTypeToSymbol(elementType)
             const { value, size } = typeGetters[symbol](view, offset + bytesRead)
             bytesRead += size
-            arr[i] = value
+            if (symbol === $ref) {
+                const mapped = entityIdMapping ? entityIdMapping.get(value) ?? value : value
+                arr[i] = mapped
+            } else {
+                arr[i] = value
+            }
         }
     }
 
@@ -427,7 +443,12 @@ export const createComponentDeserializer = (component: ComponentRef | PrimitiveB
             }
             
             const { value, size } = getter(view, offset + bytesRead)
-            component[index] = value
+            if (type === $ref) {
+                const mapped = entityIdMapping ? entityIdMapping.get(value) ?? value : value
+                ;(component as any)[index] = mapped
+            } else {
+                ;(component as any)[index] = value
+            }
             return bytesRead + size
         }
     }
@@ -463,14 +484,19 @@ export const createComponentDeserializer = (component: ComponentRef | PrimitiveB
                 if (changeMask & (1 << i)) {
                     const componentProperty = component[props[i]]
                     if (isArrayType(componentProperty)) {
-                        const { value, size } = deserializeArrayValue(getArrayElementType(componentProperty), view, offset + bytesRead)
+                        const { value, size } = deserializeArrayValue(getArrayElementType(componentProperty), view, offset + bytesRead, entityIdMapping)
                         if (Array.isArray(value)){
                             componentProperty[index] = value
                         }
                         bytesRead += size
                     } else {
                         const { value, size } = getters[i](view, offset + bytesRead)
-                        component[props[i]][index] = value
+                        if (types[i] === $ref) {
+                            const mapped = entityIdMapping ? entityIdMapping.get(value) ?? value : value
+                            component[props[i]][index] = mapped
+                        } else {
+                            component[props[i]][index] = value
+                        }
                         bytesRead += size
                     }
                 }
@@ -479,14 +505,19 @@ export const createComponentDeserializer = (component: ComponentRef | PrimitiveB
             for (let i = 0; i < props.length; i++) {
                 const componentProperty = component[props[i]]
                 if (isArrayType(componentProperty)) {
-                    const { value, size } = deserializeArrayValue(getArrayElementType(componentProperty), view, offset + bytesRead)
+                    const { value, size } = deserializeArrayValue(getArrayElementType(componentProperty), view, offset + bytesRead, entityIdMapping)
                     if (Array.isArray(value)){
                         componentProperty[index] = value
                     }
                     bytesRead += size
                 } else {
                     const { value, size } = getters[i](view, offset + bytesRead)
-                    component[props[i]][index] = value
+                    if (types[i] === $ref) {
+                        const mapped = entityIdMapping ? entityIdMapping.get(value) ?? value : value
+                        component[props[i]][index] = mapped
+                    } else {
+                        component[props[i]][index] = value
+                    }
                     bytesRead += size
                 }
             }

@@ -89,11 +89,13 @@ export type {
 } from './Query'
 
 export { pipe } from './utils/pipe'
+export { soa, aos } from './utils/soa'
 
 export {
 	withAutoRemoveSubject,
 	withOnTargetRemoved,
 	withStore,
+	makeExclusive,
 	createRelation,
 	getRelationTargets,
 	Wildcard,

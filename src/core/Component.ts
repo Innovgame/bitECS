@@ -235,7 +235,6 @@ export const addComponent = (world: World, eid: EntityId, componentOrSet: Compon
 
 	if (!hasComponent(world, eid, Prefab)) {
 		queries.forEach((queryData: Query) => {
-			queryData.toRemove.remove(eid)
 			const match = queryCheckEntity(world, queryData, eid)
 
 			if (match) queryAddEntity(queryData, eid)

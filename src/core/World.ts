@@ -121,7 +121,7 @@ export const deleteWorld = (world: World) => {
  * @returns Array
  */
 export const getWorldComponents = (world: World) =>
-    Object.keys((world as InternalWorld)[$internal].componentMap)
+    Array.from((world as InternalWorld)[$internal].componentMap.keys())
 
 /**
  * Returns all existing entities in a world

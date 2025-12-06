@@ -1,13 +1,14 @@
-import { describe, it, expect } from 'vitest'
-import { $f32, $u8, $str, array, f32, u8, str } from "../../src/serialization/SoASerializer"
-import { createAoSSerializer, createAoSDeserializer, AoSComponentRef } from "../../src/serialization/AoSSerializer"
+import { describe, it, expect } from 'bun:test'
+import { $f32, $u8, $str, $ref, array, f32, u8, str, ref } from "../../src/serialization/SoASerializer"
+import { createAoSSerializer, createAoSDeserializer } from "../../src/serialization/AoSSerializer"
+import { aos } from "../../src/core"
 
 describe('AoS Serialization and Deserialization', () => {
   it('should correctly serialize and deserialize component data', () => {
     // Define AoS components (arrays where each element stores object data)
-    const Position: AoSComponentRef = Object.assign([], { x: f32(), y: f32() })
-    const Velocity: AoSComponentRef = Object.assign([], { vx: f32(), vy: f32() })
-    const Health: AoSComponentRef = u8()
+    const Position = aos<{ x: number; y: number }>({ x: f32(), y: f32() })
+    const Velocity = aos<{ vx: number; vy: number }>({ vx: f32(), vy: f32() })
+    const Health = u8()
 
     const components = [Position, Velocity, Health]
 
@@ -33,15 +34,15 @@ describe('AoS Serialization and Deserialization', () => {
     expect(serializedData.byteLength).toBeGreaterThan(0)
 
     // Reset components
-    Position[0] = undefined
-    Position[1] = undefined
-    Position[2] = undefined
-    Velocity[0] = undefined
-    Velocity[1] = undefined
-    Velocity[2] = undefined
-    Health[0] = undefined
-    Health[1] = undefined
-    Health[2] = undefined
+    Position[0] = {x:0, y:0}
+    Position[1] = {x:0, y:0}
+    Position[2] = {x:0, y:0}
+    Velocity[0] = {vx:0, vy:0}
+    Velocity[1] = {vx:0, vy:0}
+    Velocity[2] = {vx:0, vy:0}
+    Health[0] = 0
+    Health[1] = 0
+    Health[2] = 0
 
     // Deserialize the data back
     deserialize(serializedData)
@@ -61,8 +62,8 @@ describe('AoS Serialization and Deserialization', () => {
   })
 
   it('should serialize and deserialize string fields in AoS components', () => {
-    const Name: AoSComponentRef = Object.assign([], { value: str() })
-    const Inventory: AoSComponentRef = Object.assign([], { items: array($str) })
+    const Name = aos<{ value: string }>({ value: str() })
+    const Inventory = aos<{ items: string[] }>({ items: array($str) })
 
     const components = [Name, Inventory]
 
@@ -74,8 +75,8 @@ describe('AoS Serialization and Deserialization', () => {
 
     const buf = serialize([0])
 
-    Name[0] = undefined
-    Inventory[0] = undefined
+    Name[0] = {value:""}
+    Inventory[0] = {items:[]}
 
     deserialize(buf)
 
@@ -84,8 +85,8 @@ describe('AoS Serialization and Deserialization', () => {
   })
 
   it('should work with custom entity IDs and ID mapping', () => {
-    const Position: AoSComponentRef = Object.assign([], { x: f32(), y: f32() })
-    const Health: AoSComponentRef = u8()
+    const Position = aos<{ x: number; y: number }>({ x: f32(), y: f32() })
+    const Health = u8()
 
     const components = [Position, Health]
 
@@ -114,8 +115,8 @@ describe('AoS Serialization and Deserialization', () => {
 
   describe('Diff Mode Serialization', () => {
     it('should serialize all data on first call in diff mode', () => {
-      const Position: AoSComponentRef = Object.assign([], { x: f32(), y: f32() })
-      const Health: AoSComponentRef = u8()
+      const Position = aos<{ x: number; y: number }>({ x: f32(), y: f32() })
+      const Health = u8()
       const components = [Position, Health]
 
       const serialize = createAoSSerializer(components, { diff: true })
@@ -130,8 +131,8 @@ describe('AoS Serialization and Deserialization', () => {
       expect(data1.byteLength).toBeGreaterThan(0)
 
       // Reset components
-      Position[0] = undefined
-      Health[0] = undefined
+      Position[0] = {x:0, y:0}
+      Health[0] = 0
 
       // Deserialize
       deserialize(data1)
@@ -142,8 +143,8 @@ describe('AoS Serialization and Deserialization', () => {
     })
 
     it('should serialize only changed data on subsequent calls', () => {
-      const Position: AoSComponentRef = Object.assign([], { x: f32(), y: f32() })
-      const Health: AoSComponentRef = u8()
+      const Position = aos<{ x: number; y: number }>({ x: f32(), y: f32() })
+      const Health = u8()
       const components = [Position, Health]
 
       const serialize = createAoSSerializer(components, { diff: true })
@@ -170,8 +171,8 @@ describe('AoS Serialization and Deserialization', () => {
     })
 
     it('should handle partial component changes', () => {
-      const Position: AoSComponentRef = Object.assign([], { x: f32(), y: f32() })
-      const Velocity: AoSComponentRef = Object.assign([], { vx: f32(), vy: f32() })
+      const Position = aos<{ x: number; y: number }>({ x: f32(), y: f32() })
+      const Velocity = aos<{ vx: number; vy: number }>({ vx: f32(), vy: f32() })
       const components = [Position, Velocity]
 
       const serialize = createAoSSerializer(components, { diff: true })
@@ -204,8 +205,8 @@ describe('AoS Serialization and Deserialization', () => {
     })
 
     it('should work with direct value components', () => {
-      const Health: AoSComponentRef = u8()
-      const Score: AoSComponentRef = f32()
+      const Health = u8()
+      const Score = f32()
       const components = [Health, Score]
 
       const serialize = createAoSSerializer(components, { diff: true })
@@ -236,8 +237,8 @@ describe('AoS Serialization and Deserialization', () => {
     })
 
     it('should handle array properties', () => {
-      const Position: AoSComponentRef = Object.assign([], { x: f32(), y: f32() })
-      const Inventory: AoSComponentRef = Object.assign([], { items: array($u8) })
+      const Position = aos<{ x: number; y: number }>({ x: f32(), y: f32() })
+      const Inventory = aos<{ items: number[] }>({ items: array($u8) })
       const components = [Position, Inventory]
 
       const serialize = createAoSSerializer(components, { diff: true })
@@ -263,7 +264,7 @@ describe('AoS Serialization and Deserialization', () => {
     })
 
     it('should work with custom epsilon for floats', () => {
-      const Position: AoSComponentRef = Object.assign([], { x: f32(), y: f32() })
+      const Position = aos<{ x: number; y: number }>({ x: f32(), y: f32() })
       const components = [Position]
 
       const serialize = createAoSSerializer(components, { diff: true, epsilon: 0.01 })
@@ -288,7 +289,7 @@ describe('AoS Serialization and Deserialization', () => {
     })
 
     it('should work with multiple entities and selective changes', () => {
-      const Position: AoSComponentRef = Object.assign([], { x: f32(), y: f32() })
+      const Position = aos<{ x: number; y: number }>({ x: f32(), y: f32() })
       const components = [Position]
 
       const serialize = createAoSSerializer(components, { diff: true })
@@ -312,5 +313,36 @@ describe('AoS Serialization and Deserialization', () => {
       const fullData = serialize([0, 1, 2]) // This will include entity 1 again
       expect(changedData.byteLength).toBeGreaterThan(0)
     })
+  })
+
+  it('should map ref() branded direct and nested fields with id mapping', () => {
+    const Ref = ref()
+    const Obj = aos<{ to: number; list: number[] }>({ to: ref(), list: array($ref) })
+    const components = [Ref, Obj]
+
+    const serialize = createAoSSerializer(components)
+    const deserialize = createAoSDeserializer(components)
+
+    const e = 10
+    Ref[e] = 2
+    Obj[e] = { to: 3, list: [4, 5] }
+
+    const buf = serialize([e])
+
+    Ref[e] = 0
+    Obj[e] = {to:0, list:[0]}
+
+    const idMap = new Map<number, number>([
+      [e, 100],
+      [2, 200],
+      [3, 300],
+      [4, 400],
+      [5, 500],
+    ])
+
+    deserialize(buf, idMap)
+
+    expect(Ref[100]).toBe(200)
+    expect(Obj[100]).toEqual({ to: 300, list: [400, 500] })
   })
 })

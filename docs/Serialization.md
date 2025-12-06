@@ -1,14 +1,15 @@
 # Serialization
 
-Serialization is completely decoupled from `bitECS` and instead builds its features externally by utilizing the `bitECS` API. It provides three separate serialization APIs that work synergistically together to handle different serialization needs. These can be imported from `bitecs/serialization`.
+Serialization is completely decoupled from `bitECS` and instead builds its features externally by utilizing the `bitECS` API. It provides serialization APIs that work synergistically together to handle different serialization needs. These can be imported from `bitecs/serialization`.
 
 All serializers support:
 - Efficient binary serialization using TypedArrays or regular arrays
 - Mapping between different entity IDs during deserialization
 
 Choose the appropriate serializer based on your specific needs:
-- SoA for raw component data transfer
-- Observer for add/remove component tracking 
+- SoA for raw component data transfer (Structure of Arrays)
+- AoS for object-like storage patterns (Array of Structures)
+- Observer for add/remove entity/component tracking
 - Snapshot for complete state capture and restoration
 
 ## SoA (Structure of Arrays) Serialization
@@ -20,13 +21,14 @@ The serializer provides two main functions:
 - `createSoASerializer(components)` - Creates a serializer for the given components
 - `createSoADeserializer(components)` - Creates a deserializer for the given components
 
-Data type tags can be used to define components with regular arrays, which lets the serializer know what data type to serialize the number in the array as:
+Data type tags can be used to define components with regular arrays, which lets the serializer know what data type to serialize the value in the array as:
 
 - `u8()`, `i8()` - 8-bit unsigned/signed integers
 - `u16()`, `i16()` - 16-bit unsigned/signed integers  
 - `u32()`, `i32()` - 32-bit unsigned/signed integers
 - `f32()` - 32-bit floats
 - `f64()` - 64-bit floats (default if unspecified)
+- `str()` - UTF-8 strings
 
 The type tags are used to annotate regular, non-typed arrays for proper serialization. TypedArrays like `Uint8Array` can be used directly without tags since their type is already known:
 
@@ -69,6 +71,39 @@ console.assert(Velocity.vy[eid] === 2.4)
 console.assert(Health[eid] === 100)
 ```
 
+### Strings
+
+String branding enables UTF-8 string serialization using TextEncoder/TextDecoder under the hood.
+
+```ts
+import { createSoASerializer, createSoADeserializer, str, array } from 'bitecs/serialization'
+
+const Meta = {
+  name: str([]),          // string field
+  tags: array(str)        // array of strings
+}
+
+const components = [Meta]
+
+const serialize = createSoASerializer(components)
+const deserialize = createSoADeserializer(components)
+
+const eid = 1
+
+Meta.name[eid] = 'Player_二'
+Meta.tags[eid] = ['alpha', 'βeta', 'γamma']
+
+const buffer = serialize([eid])
+
+Meta.name[eid] = ''
+Meta.tags[eid] = []
+
+deserialize(buffer)
+
+console.assert(Meta.name[eid] === 'Player_二')
+console.assert(JSON.stringify(Meta.tags[eid]) === JSON.stringify(['alpha', 'βeta', 'γamma']))
+```
+
 ### ID Mapping
 
 When deserializing data, you may need to map entity IDs from the source data to different IDs in the target world. This is common in scenarios like:
@@ -86,6 +121,67 @@ const idMap = new Map([[1, 10]])
 // entity id 1 inside of the packet will have its data written to entity id 10
 deserialize(buffer, idMap)
 ```
+
+### Options
+
+`createSoASerializer(components, options)` and `createSoADeserializer(components, options)` accept the following (AoS uses the exact same options):
+
+- **diff**: boolean
+  - When true, only changed values are serialized/deserialized (uses an internal shadow and a change mask per component).
+- **buffer**: ArrayBuffer
+  - Preallocated backing buffer used during serialization. Defaults to a 100MB buffer. The serializer returns a slice up to the written offset.
+- **epsilon**: number
+  - Epsilon used for float comparisons in diff mode. Defaults to 0.0001. Only applies to float data.
+
+Example:
+
+```ts
+import { createSoASerializer, createSoADeserializer, f32 } from 'bitecs/serialization'
+
+const Position = { x: f32([]), y: f32([]) }
+const components = [Position]
+
+const serialize = createSoASerializer(components, {
+  diff: true,
+  buffer: new ArrayBuffer(1 << 20), // 1MB
+  epsilon: 1e-3
+})
+
+const deserialize = createSoADeserializer(components, { diff: true })
+```
+
+## AoS (Array of Structures) Serialization
+
+The AoS serializer works with components that store object-like data per entity (each entity index holds an object/value). The API mirrors SoA and shares the exact same options.
+
+Functions:
+
+- `createAoSSerializer(components, options?)`
+- `createAoSDeserializer(components, options?)`
+
+ID Mapping is also applied at deserialization call time via an optional `Map<number, number>` argument to the returned deserializer function.
+
+```ts
+import { createAoSSerializer, createAoSDeserializer } from 'bitecs/serialization'
+import { f32, u8, str, array } from 'bitecs/serialization'
+
+// Arrays whose elements are per-entity objects or direct values
+const Position = Object.assign([], { x: f32(), y: f32() })
+const Health = u8()
+const Meta = Object.assign([], { name: str(), tags: array(str) })
+
+const components = [Position, Health, Meta]
+
+const serialize = createAoSSerializer(components, { diff: true })
+const deserialize = createAoSDeserializer(components, { diff: true })
+
+// Serialize entities [0, 1]
+const buffer = serialize([0, 1])
+
+// Optionally map packet IDs to local IDs on deserialize call
+const idMap = new Map([[0, 10], [1, 11]])
+deserialize(buffer, idMap)
+```
 ### Array of arrays
 The bitECS serialization system supports nested arrays (arrays of arrays) as component properties. This feature allows you to store more complex data structures while maintaining efficient binary serialization.
 ```ts
@@ -94,6 +190,7 @@ export const array = <T extends any[] = []>(type: TypeSymbol | T = f32) => { /*.
 The array() function annotates an array to indicate its elements' type for proper serialization:
 - array(f32) - Creates an array of 32-bit float values (default)
 - array(u8) - Creates an array of 8-bit unsigned integers
+- array(str) - Creates an array of UTF-8 strings
 - array(array(f32)) - Creates a nested array (array of arrays of floats)
 
 #### Usage Examples:
@@ -185,8 +282,8 @@ console.assert(Inventory.pages[eid][2][2] === 102)
 ```ts
 import { createSoASerializer, createSoADeserializer, array, f32, u8, f64 } from 'bitecs/serialization'
 const Character = {
-    position: array<[number, number]>(f64),
-    inventory: array<number[]>(u8),
+    position: array(f64),
+    inventory: array(u8),
     skills: array(array(f64))
 }
 
@@ -240,8 +337,8 @@ The Observer serializer tracks entity additions/removals and component additions
 This combination efficiently handles both entity/component presence and data synchronization across the network.
 
 Key functions:
-- `createObserverSerializer(world, networkTag, components)`
-- `createObserverDeserializer(world, networkTag, components)`
+- `createObserverSerializer(world, networkTag, components, options?)`
+- `createObserverDeserializer(world, networkTag, components, options?)`
 
 The `networkTag` parameter is a component that marks entities for serialization. Only entities with this tag will be included in serialization.
 
@@ -281,6 +378,25 @@ deserializer(buffer)
 console.assert(hasComponent(world, eid, Position))
 console.assert(hasComponent(world, eid, Health))
 ```
+
+### Options
+
+Observer now uses an options object for parity with SoA/AoS:
+
+```ts
+type ObserverSerializerOptions = {
+  buffer?: ArrayBuffer
+}
+
+type ObserverDeserializerOptions = {
+  idMap?: Map<number, number>
+}
+```
+
+- `createObserverSerializer(world, networkTag, components, { buffer }?)`
+  - Optional `buffer: ArrayBuffer` sets the backing buffer for serialization (defaults to 100MB). Returns a slice up to the written offset on each call.
+- `createObserverDeserializer(world, networkTag, components, { idMap }?)`
+  - Optional initial `idMap` seeds packet→world entity ID mapping. The returned function also accepts an optional per-call override mapping: `deserialize(packet, idMapOverride?)`.
 
 ## Snapshot Serialization
 
@@ -337,3 +453,10 @@ console.assert(Position.x[eid] === 10)
 console.assert(Position.y[eid] === 20)
 console.assert(Health[eid] === 100)
 ```
+
+### Options
+
+- `createSnapshotSerializer(world, components, buffer?)`
+  - Optional `buffer: ArrayBuffer` to set the backing buffer (defaults to 100MB). The serializer returns a slice up to the written offset.
+- `createSnapshotDeserializer(world, components)`
+  - The returned deserializer accepts an optional `Map<number, number>` per call to override/extend the packet→world entity mapping.

@@ -1,7 +1,7 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect } from 'bun:test'
 import { addComponent, removeComponent, hasComponent, addEntity, entityExists, removeEntity, createWorld, createRelation, Wildcard, withAutoRemoveSubject, withStore, query } from 'bitecs'
 
-import { createObserverSerializer, createObserverDeserializer, i32, createSnapshotSerializer, createSnapshotDeserializer } from '../../src/serialization'
+import { createObserverSerializer, createObserverDeserializer, i32, createSnapshotSerializer, createSnapshotDeserializer, ref } from '../../src/serialization'
 
 describe('ObserverSerializer and ObserverDeserializer', () => {
     it('should correctly serialize and deserialize component additions', () => {
@@ -323,6 +323,35 @@ describe('ObserverSerializer and ObserverDeserializer', () => {
 
         // Verify relation was removed in world2
         expect(hasComponent(world2, mappedContainer, Contains2(mappedItem))).toBe(false)
+    })
+
+    it('should map ref() fields inside relation stores via observer stream', () => {
+        const server = createWorld()
+        const client = createWorld()
+        const Networked = {}
+
+        const Links1 = createRelation(withStore(()=>({ target: ref([]), amount: i32() })))
+        const Links2 = createRelation(withStore(()=>({ target: ref([]), amount: i32() })))
+
+        const serialize = createObserverSerializer(server, Networked, [Links1])
+        const deserialize = createObserverDeserializer(client, Networked, [Links2])
+
+        const a = addEntity(server)
+        const b = addEntity(server)
+        addComponent(server, a, Networked)
+        addComponent(server, b, Networked)
+        addComponent(server, a, Links1(b))
+        Links1(b).target[a] = b
+        Links1(b).amount[a] = 9
+
+        const packet = serialize()
+        const idMap = deserialize(packet)
+
+        const ma = idMap.get(a)!
+        const mb = idMap.get(b)!
+        expect(hasComponent(client, ma, Links2(mb))).toBe(true)
+        expect(Links2(mb).target[ma]).toBe(mb)
+        expect(Links2(mb).amount[ma]).toBe(9)
     })
 
     it('should correctly serialize and deserialize relations after initial snapshot is sent', () => {

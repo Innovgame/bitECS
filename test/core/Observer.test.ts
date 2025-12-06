@@ -1,5 +1,6 @@
-import { describe, it, expect, vi } from 'vitest'
-import { createWorld, addEntity, addComponent, getComponent, observe, onGet, onSet, set, IsA, addPrefab } from '../../src/core'
+import { describe, it, expect, mock } from 'bun:test'
+
+import { createWorld, addEntity, addComponent, getComponent, observe, onGet, onSet, set, IsA, addPrefab, onAdd, Or, Not } from '../../src/core'
 
 describe('Observer Tests', () => {
 	it('should trigger onGet when component data is accessed', () => {
@@ -8,7 +9,7 @@ describe('Observer Tests', () => {
 		const Position: { x: number[], y: number[] } = { x: [], y: [] }
 		addComponent(world, eid, Position)
 
-		const mockObserver = vi.fn((eid) => ({ x: Position.x[eid], y: Position.y[eid] }))
+		const mockObserver = mock((eid: number) => ({ x: Position.x[eid], y: Position.y[eid] }))
 		const unsubscribe = observe(world, onGet(Position), mockObserver)
 
 		getComponent(world, eid, Position)
@@ -19,13 +20,48 @@ describe('Observer Tests', () => {
 		expect(mockObserver).toHaveBeenCalledTimes(1)
 	})
 
+	it('should trigger onAdd only once for Or combinator when multiple components are added', () => {
+		const world = createWorld()
+		const A = {}
+		const B = {}
+		const eid = addEntity(world)
+
+		const onAddMock = mock((id: number) => id)
+		observe(world, onAdd(Or(A, B)), onAddMock)
+
+		addComponent(world, eid, A)
+		addComponent(world, eid, B)
+
+		expect(onAddMock).toHaveBeenCalledTimes(1)
+		expect(onAddMock).toHaveBeenCalledWith(eid)
+	})
+
+	it('should trigger onAdd only once for [A, Not(B)] when adding A then B', () => {
+		const world = createWorld()
+		const A = {}
+		const B = {}
+		const eid = addEntity(world)
+
+		const onAddMock = mock((id: number) => id)
+		observe(world, onAdd(A, Not(B)), onAddMock)
+
+		addComponent(world, eid, A)
+		// At this point, entity matches [A, Not(B)] and should trigger once
+		expect(onAddMock).toHaveBeenCalledTimes(1)
+		expect(onAddMock).toHaveBeenCalledWith(eid)
+
+		// Now add B which makes it no longer match; should not trigger onAdd again
+		addComponent(world, eid, B)
+		expect(onAddMock).toHaveBeenCalledTimes(1)
+	})
+
 	it('should trigger onSet when component data is set', () => {
 		const world = createWorld()
 		const eid = addEntity(world)
 		const Position: { x: number[], y: number[] } = { x: [], y: [] }
 		addComponent(world, eid, Position)
 
-		const mockObserver = vi.fn((eid, params) => {
+		const mockObserver = mock((eid: number, params: any) => {
 			Position.x[eid] = params.x
 			Position.y[eid] = params.y
 		})
@@ -49,13 +85,13 @@ describe('Observer Tests', () => {
 		const Position: { x: number[], y: number[] } = { x: [], y: [] }
 		addComponent(world, eid, Position)
 
-		const setObserver = vi.fn((eid, params) => {
+		const setObserver = mock((eid: number, params: any) => {
 			Position.x[eid] = params.x
 			Position.y[eid] = params.y
 		})
 		observe(world, onSet(Position), setObserver)
 
-		const getObserver = vi.fn((eid) => ({ x: Position.x[eid], y: Position.y[eid] }))
+		const getObserver = mock((eid: number) => ({ x: Position.x[eid], y: Position.y[eid] }))
 		observe(world, onGet(Position), getObserver)
 
 		addComponent(world, eid, set(Position, { x: 3, y: 4 }))
@@ -73,13 +109,13 @@ describe('Observer Tests', () => {
 		const Position = { x: [] as number[], y: [] as number[] }
 		addComponent(world, eid, Position)
 
-		const setObserver = vi.fn((eid: number, params: { x: number, y: number }) => {
+		const setObserver = mock((eid: number, params: { x: number, y: number }) => {
 			Position.x[eid] = params.x
 			Position.y[eid] = params.y
 		})
 		observe(world, onSet(Position), setObserver)
 
-		const getObserver = vi.fn((eid: number): { x: number, y: number } => ({
+		const getObserver = mock((eid: number): { x: number, y: number } => ({
 			x: Position.x[eid],
 			y: Position.y[eid]
 		}))
@@ -106,12 +142,12 @@ describe('Observer Tests', () => {
 		const Vitals = { health: [] as number[] }
 		addComponent(world, eid, Vitals)
 
-		const setObserver = vi.fn((eid: number, params: { health: number }) => {
+		const setObserver = mock((eid: number, params: { health: number }) => {
 			Vitals.health[eid] = params.health
 		})
 		observe(world, onSet(Vitals), setObserver)
 
-		const getObserver = vi.fn((eid: number): { health: number } => ({
+		const getObserver = mock((eid: number): { health: number } => ({
 			health: Vitals.health[eid]
 		}))
 		observe(world, onGet(Vitals), getObserver)
@@ -146,13 +182,13 @@ describe('Observer Tests', () => {
 		const eid = addEntity(world)
 		const Position = { x: [] as number[], y: [] as number[] }
 
-		const setObserver = vi.fn((eid: number, params: { x: number, y: number }) => {
+		const setObserver = mock((eid: number, params: { x: number, y: number }) => {
 			Position.x[eid] = params.x
 			Position.y[eid] = params.y
 		})
 		observe(world, onSet(Position), setObserver)
 
-		const getObserver = vi.fn((eid: number): { x: number, y: number } => ({
+		const getObserver = mock((eid: number): { x: number, y: number } => ({
 			x: Position.x[eid],
 			y: Position.y[eid]
 		}))
@@ -195,12 +231,12 @@ describe('Observer Tests', () => {
 
 		const Health = { value: [] as number[] }
 
-		const healthObserver = vi.fn((eid: number, params: { value: number }) => {
+		const healthObserver = mock((eid: number, params: { value: number }) => {
 			Health.value[eid] = params.value
 		})
 		observe(world, onSet(Health), healthObserver)
 
-		const getHealthObserver = vi.fn((eid: number) => ({
+		const getHealthObserver = mock((eid: number) => ({
 			value: Health.value[eid]
 		}))
 		observe(world, onGet(Health), getHealthObserver)
@@ -241,12 +277,12 @@ describe('Observer Tests', () => {
 		// Create Health components
 		const Health = { value: [] as number[] }
 
-		const setHealthObserver = vi.fn((eid: number, params: { value: number }) => {
+		const setHealthObserver = mock((eid: number, params: { value: number }) => {
 			Health.value[eid] = params.value
 		})
 		observe(world, onSet(Health), setHealthObserver)
 
-		const getHealthObserver = vi.fn((eid: number) => ({
+		const getHealthObserver = mock((eid: number) => ({
 			value: Health.value[eid]
 		}))
 		observe(world, onGet(Health), getHealthObserver)
@@ -255,12 +291,12 @@ describe('Observer Tests', () => {
 		// Create Speed component
 		const Speed = { value: [] as number[] }
 
-		const setSpeedObserver = vi.fn((eid: number, params: { value: number }) => {
+		const setSpeedObserver = mock((eid: number, params: { value: number }) => {
 			Speed.value[eid] = params.value
 		})
 		observe(world, onSet(Speed), setSpeedObserver)
 
-		const getSpeedObserver = vi.fn((eid: number) => ({
+		const getSpeedObserver = mock((eid: number) => ({
 			value: Speed.value[eid]
 		}))
 		observe(world, onGet(Speed), getSpeedObserver)
@@ -269,12 +305,12 @@ describe('Observer Tests', () => {
 		// Create Strength component
 		const Strength = { value: [] as number[] }
 
-		const setStrengthObserver = vi.fn((eid: number, params: { value: number }) => {
+		const setStrengthObserver = mock((eid: number, params: { value: number }) => {
 			Strength.value[eid] = params.value
 		})
 		observe(world, onSet(Strength), setStrengthObserver)
 
-		const getStrengthObserver = vi.fn((eid: number) => ({
+		const getStrengthObserver = mock((eid: number) => ({
 			value: Strength.value[eid]
 		}))
 		observe(world, onGet(Strength), getStrengthObserver)

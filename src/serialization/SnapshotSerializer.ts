@@ -12,7 +12,7 @@ import {
     ComponentRef,
     query
 } from 'bitecs'
-import { $u8, $i8, $u16, $i16, $u32, $i32, $f32 } from './SoASerializer'
+import { $u8, $i8, $u16, $i16, $u32, $i32, $f32, $ref } from './SoASerializer'
 
 /**
  * Serializes relation data for a specific entity
@@ -24,8 +24,13 @@ function serializeRelationData(data: any, eid: number, dataView: DataView, offse
     if (Array.isArray(data)) {
         const value = data[eid]
         if (value !== undefined) {
-            dataView.setFloat64(offset, value)
-            return offset + 8
+            if ($ref in data) {
+                dataView.setUint32(offset, value)
+                return offset + 4
+            } else {
+                dataView.setFloat64(offset, value)
+                return offset + 8
+            }
         }
         return offset
     }
@@ -53,7 +58,7 @@ function serializeRelationData(data: any, eid: number, dataView: DataView, offse
                 } else if (arr instanceof Int32Array || $i32 in arr) {
                     dataView.setInt32(offset, value)
                     offset += 4
-                } else if (arr instanceof Uint32Array || $u32 in arr) {
+                } else if (arr instanceof Uint32Array || $u32 in arr || $ref in arr) {
                     dataView.setUint32(offset, value)
                     offset += 4
                 } else if (arr instanceof Float32Array || $f32 in arr) {
@@ -74,11 +79,17 @@ function serializeRelationData(data: any, eid: number, dataView: DataView, offse
 /**
  * Deserializes relation data for a specific entity
  */
-function deserializeRelationData(data: any, eid: number, dataView: DataView, offset: number) {
+function deserializeRelationData(data: any, eid: number, dataView: DataView, offset: number, entityIdMapping?: Map<number, number>) {
     if (!data) return offset
     
     // Handle array data (AoS) - defaults to f64
     if (Array.isArray(data)) {
+        if ($ref in data) {
+            const value = dataView.getUint32(offset)
+            const mapped = entityIdMapping ? entityIdMapping.get(value) ?? value : value
+            data[eid] = mapped
+            return offset + 4
+        }
         data[eid] = dataView.getFloat64(offset)
         return offset + 8
     }
@@ -104,8 +115,14 @@ function deserializeRelationData(data: any, eid: number, dataView: DataView, off
             } else if (arr instanceof Int32Array || $i32 in arr) {
                 arr[eid] = dataView.getInt32(offset)
                 offset += 4
-            } else if (arr instanceof Uint32Array || $u32 in arr) {
-                arr[eid] = dataView.getUint32(offset)
+            } else if (arr instanceof Uint32Array || $u32 in arr || $ref in arr) {
+                const value = dataView.getUint32(offset)
+                if ($ref in arr) {
+                    const mapped = entityIdMapping ? entityIdMapping.get(value) ?? value : value
+                    arr[eid] = mapped
+                } else {
+                    arr[eid] = value
+                }
                 offset += 4
             } else if (arr instanceof Float32Array || $f32 in arr) {
                 arr[eid] = dataView.getFloat32(offset)
@@ -189,9 +206,9 @@ export const createSnapshotSerializer = (world: World, components: (Record<strin
         offset += componentData.byteLength
     }
 
-    return () => {
+    return (selectedEntities?: readonly number[]) => {
         offset = 0
-        const entities = getAllEntities(world)
+        const entities = selectedEntities ?? getAllEntities(world)
         serializeEntityComponentRelationships(entities)
         serializeComponentData(entities)
         return buffer.slice(0, offset)
@@ -204,12 +221,12 @@ export const createSnapshotSerializer = (world: World, components: (Record<strin
  * @param {Record<string, PrimitiveBrand>[]} components - An array of component definitions.
  * @returns {Function} A function that takes a serialized packet and deserializes it into the world, returning a map of packet entity IDs to world entity IDs.
  */
-export const createSnapshotDeserializer = (world: World, components: (Record<string, PrimitiveBrand> | ComponentRef)[], constructorMapping?: Map<number, number>) => {
-    let entityIdMapping = constructorMapping || new Map<number, number>()
+export const createSnapshotDeserializer = (world: World, components: (Record<string, PrimitiveBrand> | ComponentRef)[], idMap?: Map<number, number>) => {
+    let entityIdMapping = idMap || new Map<number, number>()
     const soaDeserializer = createSoADeserializer(components)
 
-    return (packet: ArrayBuffer, overrideMapping?: Map<number, number>): Map<number, number> => {
-        const currentMapping = overrideMapping || entityIdMapping
+    return (packet: ArrayBuffer, idMapOverride?: Map<number, number>): Map<number, number> => {
+        const currentMapping = idMapOverride || entityIdMapping
         const dataView = new DataView(packet)
         let offset = 0
 
@@ -246,7 +263,7 @@ export const createSnapshotDeserializer = (world: World, components: (Record<str
                     }
                     const relationComponent = (component as (target: any) => any)(worldTargetId)
                     addComponent(world, worldEntityId, relationComponent)
-                    offset = deserializeRelationData(relationComponent, worldEntityId, dataView, offset)
+                    offset = deserializeRelationData(relationComponent, worldEntityId, dataView, offset, currentMapping)
                 } else {
                     addComponent(world, worldEntityId, component)
                 }

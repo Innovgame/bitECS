@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from 'vitest'
+import { describe, it, expect, mock } from 'bun:test'
 import { registerComponent, addComponent, addComponents, setComponent, hasComponent, removeComponent, InternalWorld, createWorld, addEntity, removeEntity, $internal, getEntityComponents, observe, onSet, onAdd, set, createRelation, query, Wildcard, withStore } from '../../src/core'
 
 describe('Component Tests', () => {
@@ -131,7 +131,7 @@ describe('Component Tests', () => {
 		const eid = addEntity(world)
 		const Position: { x: number[], y: number[] } = { x: [], y: [] }
 
-		const mockObserver = vi.fn((eid, params) => {
+		const mockObserver = mock((eid: number, params: any) => {
 			Position.x[eid] = params.x
 			Position.y[eid] = params.y
 		})
@@ -169,7 +169,7 @@ describe('Component Tests', () => {
 		const eid = addEntity(world)
 		const Velocity: { dx: number[], dy: number[] } = { dx: [], dy: [] }
 
-		const mockObserver = vi.fn((eid, params) => {
+		const mockObserver = mock((eid: number, params: any) => {
 			Velocity.dx[eid] = params.dx
 			Velocity.dy[eid] = params.dy
 		})

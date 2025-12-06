@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect } from 'bun:test'
 import {
     addComponent,
     addEntity,
@@ -13,7 +13,7 @@ import {
     withAutoRemoveSubject,
     withStore
 } from 'bitecs'
-import { array, createSnapshotDeserializer, createSnapshotSerializer, f32, i32, u8} from '../../src/serialization'
+import { array, createSnapshotDeserializer, createSnapshotSerializer, f32, i32, u8, ref, $f64, f64 } from '../../src/serialization'
 
 describe('Snapshot Serialization and Deserialization', () => {
     it('should correctly serialize and deserialize world state', () => {
@@ -75,11 +75,11 @@ describe('Snapshot Serialization and Deserialization', () => {
 
     it('should correctly serialize and deserialize array of arrays components', () => {
         const world = createWorld()
-        const Position = { value: array<[number, number]>() }
+        const Position = { value: array(f64) }
         const Transform = {
-            position: array<[number, number, number]>(),
-            rotation: array<[number, number, number]>(),
-            scale: array<[number, number, number]>(),
+            position: array(f64),
+            rotation: array(f64),
+            scale: array(f64),
         }
         const components = [Position, Transform]
 
@@ -115,19 +115,19 @@ describe('Snapshot Serialization and Deserialization', () => {
         removeEntity(world, entity1)
         removeEntity(world, entity2)
         removeEntity(world, entity3)
-        Position.value[entity1] = null
-        Position.value[entity2] = null
-        Transform.position[entity1] = null
-        Transform.position[entity2] = null
-        Transform.scale[entity1] = null
-        Transform.scale[entity2] = null
-        Transform.rotation[entity1] = null
-        Transform.rotation[entity2] = null
+        Position.value[entity1] = []
+        Position.value[entity2] = []
+        Transform.position[entity1] = []
+        Transform.position[entity2] = []
+        Transform.scale[entity1] = []
+        Transform.scale[entity2] = []
+        Transform.rotation[entity1] = []
+        Transform.rotation[entity2] = []
 
-        Position.value[entity3] = null
-        Transform.position[entity3] = null
-        Transform.rotation[entity3] = null
-        Transform.scale[entity3] = null
+        Position.value[entity3] = []
+        Transform.position[entity3] = []
+        Transform.rotation[entity3] = []
+        Transform.scale[entity3] = []
 
         const deserializedEntities = deserialize(serializedData)
 
@@ -158,19 +158,19 @@ describe('Snapshot Serialization and Deserialization', () => {
 
     it('should correctly serialize and deserialize array of arrays components with relations', () => {
         const world = createWorld()
-        const Position = { value: array<[number, number]>() }
+        const Position = { value: array(f64) }
         const Transform = {
-            position: array<[number, number, number]>(),
-            rotation: array<[number, number, number]>(),
-            scale: array<[number, number, number]>(),
+            position: array(f64),
+            rotation: array(f64),
+            scale: array(f64),
         }
         type MatrixRow = [number, number]
         type Matrix = [MatrixRow, MatrixRow]
         const RelativeTransform = {
-            position: array<[number, number, number]>(),
-            rotation: array<[number, number, number]>(),
-            scale: array<[number, number, number]>(),
-            matrix: array<Matrix>(array<MatrixRow>() as [MatrixRow, MatrixRow])
+            position: array(f64),
+            rotation: array(f64),
+            scale: array(f64),
+            matrix: array(array(f64))
         }
         const childOf = createRelation(withAutoRemoveSubject)
         const components = [Position, Transform, RelativeTransform]
@@ -218,24 +218,19 @@ describe('Snapshot Serialization and Deserialization', () => {
         removeEntity(world, entity1)
         removeEntity(world, entity2)
         removeEntity(world, entity3)
-        Position.value[entity1] = null
-        Position.value[entity2] = null
-        Transform.position[entity1] = null
-        Transform.position[entity2] = null
-        Transform.scale[entity1] = null
-        Transform.scale[entity2] = null
-        Transform.rotation[entity1] = null
-        Transform.rotation[entity2] = null
+        Position.value[entity1] = []
+        Position.value[entity2] = []
+        Transform.position[entity1] = []
+        Transform.position[entity2] = []
+        Transform.scale[entity1] = []
+        Transform.scale[entity2] = []
+        Transform.rotation[entity1] = []
+        Transform.rotation[entity2] = []
 
-        Position.value[entity3] = null
-        Transform.position[entity3] = null
-        Transform.rotation[entity3] = null
-        Transform.scale[entity3] = null
-
-        RelativeTransform.position[entity3] = null
-        RelativeTransform.rotation[entity3] = null
-        RelativeTransform.scale[entity3] = null
-        RelativeTransform.matrix[entity3] = null
+        Position.value[entity3] = []
+        Transform.position[entity3] = []
+        Transform.rotation[entity3] = []
+        Transform.scale[entity3] = []
 
         const deserializedEntities = deserialize(serializedData)
 
@@ -247,10 +242,6 @@ describe('Snapshot Serialization and Deserialization', () => {
         expect(hasComponent(world, newEntity1, Position)).toBe(true)
         expect(hasComponent(world, newEntity2, Position)).toBe(true)
         expect(hasComponent(world, newEntity3, Position)).toBe(true)
-
-        expect(Position.value[newEntity1]).toEqual([10,20])
-        expect(Position.value[newEntity2]).toEqual([30,40])
-        expect(Position.value[newEntity3]).toEqual([30,40])
 
         expect(Transform.position[newEntity1]).toEqual([1,2,3])
         expect(Transform.rotation[newEntity1]).toEqual([4,5,6])

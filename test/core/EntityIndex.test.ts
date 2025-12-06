@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect } from 'bun:test'
 import { addEntityId, removeEntityId, isEntityIdAlive, createEntityIndex, getVersion, getId, withVersioning } from '../../src/core/EntityIndex'
 
 describe('EntityIndex', () => {

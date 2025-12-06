@@ -1,5 +1,4 @@
-import { test, describe } from 'vitest';
-import assert from 'assert';
+import { test, describe, expect } from 'bun:test'
 import { growBuffer } from './growBuffer';
 
 describe('growBuffer', () => {
@@ -12,6 +11,6 @@ describe('growBuffer', () => {
 		});
 		const newBuffer = growBuffer(buffer, newCapacity);
 
-		assert.strictEqual(newBuffer.byteLength, newCapacity * Uint32Array.BYTES_PER_ELEMENT);
+		expect(newBuffer.byteLength).toBe(newCapacity * Uint32Array.BYTES_PER_ELEMENT);
 	});
 });

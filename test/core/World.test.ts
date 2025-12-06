@@ -1,6 +1,6 @@
 import assert, { strictEqual } from 'assert'
-import { describe, it } from 'vitest'
-import { createWorld, createEntityIndex, $internal } from '../../src/core'
+import { describe, it } from 'bun:test'
+import { createWorld, createEntityIndex, $internal, registerComponent, getWorldComponents } from '../../src/core'
 
 describe('World Tests', () => {
 	it('should initialize all private state', () => {
@@ -36,5 +36,20 @@ describe('World Tests', () => {
 
 		// Should not use the fake object as EntityIndex
 		assert(ctx.entityIndex !== fakeIndex)
+	})
+
+	it('getWorldComponents should return registered components', () => {
+		const world = createWorld()
+		const CompA = { value: 0 }
+		const CompB = { value: 1 }
+
+		registerComponent(world, CompA)
+		registerComponent(world, CompB)
+
+		const components = getWorldComponents(world)
+
+		assert(components.includes(CompA))
+		assert(components.includes(CompB))
+		strictEqual(components.length, 2)
 	})
 })

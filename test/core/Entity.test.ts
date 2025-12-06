@@ -1,5 +1,5 @@
 import { strictEqual } from 'assert'
-import { describe, it } from 'vitest'
+import { describe, it } from 'bun:test'
 import { createWorld, addEntity, removeEntity, World, $internal } from '../../src/core'
 
 const getEntityCursor = (world: World) => world[$internal].entityIndex.maxId + 1

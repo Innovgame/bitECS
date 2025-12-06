@@ -434,11 +434,21 @@ export const queryCheckComponent = (query: Query, c: ComponentData) => {
  * @param {number} eid - The entity ID to add.
  */
 export const queryAddEntity = (query: Query, eid: EntityId) => {
-	query.toRemove.remove(eid)
-
-	query.addObservable.notify(eid)
+	// If there is a pending removal for this entity in this query, cancel it and emit add again.
+	// This ensures remove-then-add within the same frame produces a fresh onAdd event for observers.
+	if (query.toRemove.has(eid)) {
+		query.toRemove.remove(eid)
+		query.addObservable.notify(eid)
+		return
+	}
+	// Prevent duplicate onAdd notifications when multiple components cause the same entity
+	// to newly satisfy an Or(...) or mixed combinator query within a single update sequence.
+	if (query.has(eid)) return
 
 	query.add(eid)
+	
+	// Notify after the entity is actually added to the query set to reflect state transition.
+	query.addObservable.notify(eid)
 }
 
 /**

@@ -1,6 +1,6 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect } from 'bun:test'
 import { addEntity, createWorld } from "bitecs"
-import {$f32, $f64, $u8, $str, array, createSoADeserializer, createSoASerializer, f32, u8, str} from "../../src/serialization"
+import {$f32, $f64, $u8, $str, $ref, array, createSoADeserializer, createSoASerializer, f32, u8, str, ref} from "../../src/serialization"
 
 describe('SoA Serialization and Deserialization', () => {
   it('should correctly serialize and deserialize component data', () => {
@@ -121,8 +121,8 @@ describe('SoA Serialization and Deserialization', () => {
 
   it('should correctly serialize and deserialize array of arrays as component properties', () => {
     const Character = {
-      position: array<[number, number]>($f64),
-      inventory: array<number[]>($u8),
+      position: array($f64),
+      inventory: array($u8),
       skills: array(array($f64))
     }
 
@@ -150,7 +150,7 @@ describe('SoA Serialization and Deserialization', () => {
     const buffer = serialize([eid])
 
     // Zero out components to prepare for deserialization
-    Character.position[eid] = null
+    Character.position[eid] = [0,0]
     Character.inventory[eid] = []
     Character.skills[eid] = []
 
@@ -188,7 +188,7 @@ describe('SoA Serialization and Deserialization', () => {
     const buffer = serialize([eid])
 
     // Zero out component to prepare for deserialization
-    Waypoints.points[eid] = null
+    Waypoints.points[eid] = []
 
     // Deserialize back into component
     deserialize(buffer)
@@ -259,6 +259,41 @@ describe('SoA Serialization and Deserialization', () => {
 
     expect(Meta.name[eid]).toBe("Player_二")
     expect(Meta.tags[eid]).toEqual(["alpha", "βeta", "γamma"])
+  })
+
+  it('should map ref() branded fields and nested arrays using entityIdMapping', () => {
+    const Refs = { to: ref([]), list: array($ref), nested: array(array($ref)) }
+    const components = [Refs]
+
+    const serialize = createSoASerializer(components)
+    const deserialize = createSoADeserializer(components)
+
+    const e = 5
+    const a = 11, b = 12, c = 13, d = 14
+    Refs.to[e] = a
+    Refs.list[e] = [b, c]
+    Refs.nested[e] = [[d]]
+
+    const buf = serialize([e])
+
+    const idMap = new Map<number, number>([
+      [e, 50],
+      [a, 110],
+      [b, 120],
+      [c, 130],
+      [d, 140]
+    ])
+
+    // reset
+    Refs.to[e] = 0
+    Refs.list[e] = []
+    Refs.nested[e] = []
+
+    deserialize(buf, idMap)
+
+    expect(Refs.to[50]).toBe(110)
+    expect(Refs.list[50]).toEqual([120, 130])
+    expect(Refs.nested[50]).toEqual([[140]])
   })
 
   describe('Diff Mode Serialization', () => {
